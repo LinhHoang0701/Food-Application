@@ -1,40 +1,29 @@
-const AWS = require('aws-sdk/clients/s3');
-var jwt = require('jsonwebtoken');
+const AWS = require("aws-sdk/clients/s3");
+var jwt = require("jsonwebtoken");
 
 // Bring in Models & Helpers
-const Product = require('../models/product');
-const Category = require('../models/category');
-const Wishlist = require('../models/wishlist');
-const Review = require('../models/review');
+const Product = require("../models/product");
+const Category = require("../models/category");
+const Wishlist = require("../models/wishlist");
+const Review = require("../models/review");
 
-const checkAuth = require('../helpers/auth');
+const checkAuth = require("../helpers/auth");
 
 const addProduct = async (req, res) => {
   try {
-    const sku = req.body.sku;
     const name = req.body.name;
     const description = req.body.description;
     const isActive = req.body.isActive;
     const image = req.file;
 
-    if (!sku) {
-      return res.status(400).json({error: 'You must enter sku.'});
-    }
-
     if (!description || !name) {
       return res
         .status(400)
-        .json({error: 'You must enter description & name.'});
+        .json({ error: "You must enter description & name." });
     }
 
-    const foundProduct = await Product.findOne({sku});
-
-    if (foundProduct) {
-      return res.status(400).json({error: 'This sku is already in use.'});
-    }
-
-    let imageUrl = '';
-    let imageKey = '';
+    let imageUrl = "";
+    let imageKey = "";
 
     if (image) {
       const s3bucket = new AWS({
@@ -47,7 +36,7 @@ const addProduct = async (req, res) => {
         Key: image.originalname,
         Body: image.buffer,
         ContentType: image.mimetype,
-        ACL: 'public-read',
+        ACL: "public-read",
       };
       const s3Upload = await s3bucket.upload(params).promise();
 
@@ -56,7 +45,6 @@ const addProduct = async (req, res) => {
     }
 
     const product = new Product({
-      sku,
       name,
       description,
       isActive,
@@ -74,7 +62,7 @@ const addProduct = async (req, res) => {
   } catch (error) {
     console.log(error);
     return res.status(400).json({
-      error: 'Your request could not be processed. Please try again.',
+      error: "Your request could not be processed. Please try again.",
     });
   }
 };
@@ -91,7 +79,32 @@ const searchAll = async (req, res) => {
   } catch (error) {
     console.log(error);
     res.status(400).json({
-      error: 'Your request could not be processed. Please try again.',
+      error: "Your request could not be processed. Please try again.",
+    });
+  }
+};
+
+const searchByName = async (req, res) => {
+  try {
+    const name = req.params.name;
+
+    const productDoc = await Product.find(
+      { name: { $regex: new RegExp(name), $options: "is" }, isActive: true },
+      { name: 1, slug: 1, imageUrl: 1, price: 1, _id: 0 }
+    );
+
+    if (productDoc.length < 0) {
+      return res.status(404).json({
+        message: "No product found.",
+      });
+    }
+
+    res.status(200).json({
+      products: productDoc,
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: "Your request could not be processed. Please try again.",
     });
   }
 };
@@ -102,11 +115,11 @@ const getProduct = async (req, res) => {
 
     let productDoc = null;
 
-    productDoc = await Product.findOne({_id: productId});
+    productDoc = await Product.findOne({ _id: productId });
 
     if (!productDoc) {
       return res.status(404).json({
-        message: 'No product found.',
+        message: "No product found.",
       });
     }
 
@@ -116,43 +129,66 @@ const getProduct = async (req, res) => {
   } catch (error) {
     console.log(error);
     res.status(400).json({
-      error: 'Your request could not be processed. Please try again.',
+      error: "Your request could not be processed. Please try again.",
+    });
+  }
+};
+
+const getProductBySlug = async (req, res) => {
+  try {
+    const slug = req.params.slug;
+
+    const productDoc = await Product.findOne({ slug, isActive: true });
+
+    if (!productDoc) {
+      return res.status(404).json({
+        message: "No product found.",
+      });
+    }
+
+    res.status(200).json({
+      product: productDoc,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(400).json({
+      error: "Your request could not be processed. Please try again.",
     });
   }
 };
 
 const getListProduct = async (req, res) => {
   try {
-    let {sortOrder, rating, category, pageNumber: page = 1} = req.body;
+    let { sortOrder, rating, category, pageNumber: page = 1 } = req.body;
 
     const pageSize = 8;
-    const categoryFilter = category ? {category} : {};
+    const categoryFilter = category ? { category } : {};
     const ratingFilter = rating
-      ? {rating: {$gte: rating}}
-      : {rating: {$gte: rating}};
+      ? { rating: { $gte: rating } }
+      : { rating: { $gte: rating } };
 
     const basicQuery = [
       {
         $lookup: {
-          from: 'reviews',
-          localField: '_id',
-          foreignField: 'product',
-          as: 'reviews',
+          from: "reviews",
+          localField: "_id",
+          foreignField: "product",
+          as: "reviews",
         },
       },
       {
         $addFields: {
-          totalRatings: {$sum: '$reviews.rating'},
-          totalReviews: {$size: '$reviews'},
+          totalRatings: { $sum: "$reviews.rating" },
+          totalReviews: { $size: "$reviews" },
         },
       },
       {
         $addFields: {
           averageRating: {
             $cond: [
-              {$eq: ['$totalReviews', 0]},
+              { $eq: ["$totalReviews", 0] },
               0,
-              {$divide: ['$totalRatings', '$totalReviews']},
+              { $divide: ["$totalRatings", "$totalReviews"] },
             ],
           },
         },
@@ -172,8 +208,8 @@ const getListProduct = async (req, res) => {
 
     const userDoc = await checkAuth(req);
     const categoryDoc = await Category.findOne(
-      {slug: categoryFilter.category, isActive: true},
-      'products -_id',
+      { slug: categoryFilter.category, isActive: true },
+      "products -_id"
     );
     if (categoryDoc && categoryFilter !== category) {
       basicQuery.push({
@@ -194,67 +230,67 @@ const getListProduct = async (req, res) => {
         [
           {
             $lookup: {
-              from: 'wishlists',
-              let: {product: '$_id'},
+              from: "wishlists",
+              let: { product: "$_id" },
               pipeline: [
                 {
                   $match: {
                     $and: [
-                      {$expr: {$eq: ['$$product', '$product']}},
-                      {user: new Mongoose.Types.ObjectId(userDoc.id)},
+                      { $expr: { $eq: ["$$product", "$product"] } },
+                      { user: new Mongoose.Types.ObjectId(userDoc.id) },
                     ],
                   },
                 },
               ],
-              as: 'isLiked',
+              as: "isLiked",
             },
           },
           {
             $addFields: {
-              isLiked: {$arrayElemAt: ['$isLiked.isLiked', 0]},
+              isLiked: { $arrayElemAt: ["$isLiked.isLiked", 0] },
             },
           },
-        ].concat(basicQuery),
+        ].concat(basicQuery)
       );
       const paginateQuery = [
-        {$sort: sortOrder},
-        {$skip: pageSize * (productsCount.length > 8 ? page - 1 : 0)},
-        {$limit: pageSize},
+        { $sort: sortOrder },
+        { $skip: pageSize * (productsCount.length > 8 ? page - 1 : 0) },
+        { $limit: pageSize },
       ];
       products = await Product.aggregate(
         [
           {
             $lookup: {
-              from: 'wishlists',
-              let: {product: '$_id'},
+              from: "wishlists",
+              let: { product: "$_id" },
               pipeline: [
                 {
                   $match: {
                     $and: [
-                      {$expr: {$eq: ['$$product', '$product']}},
-                      {user: new Mongoose.Types.ObjectId(userDoc.id)},
+                      { $expr: { $eq: ["$$product", "$product"] } },
+                      { user: new Mongoose.Types.ObjectId(userDoc.id) },
                     ],
                   },
                 },
               ],
-              as: 'isLiked',
+              as: "isLiked",
             },
           },
           {
             $addFields: {
-              isLiked: {$arrayElemAt: ['$isLiked.isLiked', 0]},
+              isLiked: { $arrayElemAt: ["$isLiked.isLiked", 0] },
             },
           },
         ]
           .concat(basicQuery)
-          .concat(paginateQuery),
+          .concat(paginateQuery)
       );
     } else {
       productsCount = await Product.aggregate(basicQuery);
       const paginateQuery = [
-        {$sort: sortOrder},
-        {$skip: pageSize * (productsCount.length > 8 ? page - 1 : 0)},
-        {$limit: pageSize},
+        { $sort: sortOrder },
+        { $skip: pageSize * (productsCount.length > 8 ? page - 1 : 0) },
+        { $limit: pageSize },
       ];
       products = await Product.aggregate(basicQuery.concat(paginateQuery));
     }
@@ -271,7 +307,7 @@ const getListProduct = async (req, res) => {
   } catch (error) {
     console.log(error);
     res.status(400).json({
-      error: 'Your request could not be processed. Please try again.',
+      error: "Your request could not be processed. Please try again.",
     });
   }
 };
@@ -281,7 +317,7 @@ const editProduct = async (req, res) => {
     try {
       const productId = req.params.id;
       const update = req.body.product;
-      const query = {_id: productId};
+      const query = { _id: productId };
 
       await Product.findOneAndUpdate(query, update, {
         new: true,
@@ -289,11 +325,11 @@ const editProduct = async (req, res) => {
 
       res.status(200).json({
         success: true,
-        message: 'Product has been updated successfully!',
+        message: "Product has been updated successfully!",
       });
     } catch (error) {
       res.status(400).json({
-        error: 'Your request could not be processed. Please try again.',
+        error: "Your request could not be processed. Please try again.",
       });
     }
   };
@@ -303,7 +339,7 @@ const editProductActive = async (req, res) => {
   try {
     const productId = req.params.id;
     const update = req.body.product;
-    const query = {_id: productId};
+    const query = { _id: productId };
 
     await Product.findOneAndUpdate(query, update, {
       new: true,
@@ -311,20 +347,20 @@ const editProductActive = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Product has been updated successfully!',
+      message: "Product has been updated successfully!",
     });
   } catch (error) {
     res.status(400).json({
-      error: 'Your request could not be processed. Please try again.',
+      error: "Your request could not be processed. Please try again.",
     });
   }
 };
 
 const deleteProduct = async (req, res) => {
   try {
-    const product = await Product.deleteOne({_id: req.params.id});
-    await Wishlist.deleteMany({product: req.params.id});
-    await Review.deleteMany({product: req.params.id});
+    const product = await Product.deleteOne({ _id: req.params.id });
+    await Wishlist.deleteMany({ product: req.params.id });
+    await Review.deleteMany({ product: req.params.id });
     res.status(200).json({
       success: true,
       message: `Product has been deleted successfully!`,
@@ -333,7 +369,7 @@ const deleteProduct = async (req, res) => {
   } catch (error) {
     console.log(error);
     res.status(400).json({
-      error: 'Your request could not be processed. Please try again.',
+      error: "Your request could not be processed. Please try again.",
     });
   }
 };
@@ -346,4 +382,6 @@ module.exports = {
   searchAll,
   getProduct,
   getListProduct,
+  getProductBySlug,
+  searchByName,
 };
