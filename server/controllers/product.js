@@ -1,5 +1,4 @@
 const AWS = require("aws-sdk/clients/s3");
-var jwt = require("jsonwebtoken");
 
 // Bring in Models & Helpers
 const Product = require("../models/product");
